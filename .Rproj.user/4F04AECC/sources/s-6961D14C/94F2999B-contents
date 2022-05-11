@@ -1,0 +1,348 @@
+---
+title: "Final Solo Project"
+author: "William Greenberger"
+date: "5/10/2022"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
+
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+```{r eruptions, echo=FALSE}
+library(fpp3)
+library(ggeasy)
+library(shinyWidgets)
+library(shinydashboard)
+library(plotly)
+library(shiny)
+# Path where data is
+#file_path <- "C:/Users/willg/Documents/Spring 2022/BAS 475/BAS475FinalProject/mydata2.csv"
+
+# Data starts in 3rd row, skip first 2 rows
+g_trends <- read.csv("mydata2.csv", skip = 2)
+g_trends2 <- read.csv("mydata3.csv", skip = 2)
+g_trends3 <- read.csv("mydata4.csv", skip = 2)
+g_trends4 <- read.csv("mydata5.csv", skip = 2)
+
+# Rename columns
+names(g_trends) <- c("Month", "FanDuel")
+names(g_trends2) <- c("Month", "Bovada")
+names(g_trends3) <- c("Month", "DraftKings")
+names(g_trends4) <- c("Month", "Betway")
+
+# Convert Month to date
+g_trends$Month <- yearmonth(g_trends$Month)
+g_trends2$Month <- yearmonth(g_trends2$Month)
+g_trends3$Month <- yearmonth(g_trends3$Month)
+g_trends4$Month <- yearmonth(g_trends4$Month)
+
+
+# Convert to tsibble
+g_trends <- tsibble(g_trends)
+g_trends2 <- tsibble(g_trends2)
+g_trends3 <- tsibble(g_trends3)
+g_trends4 <- tsibble(g_trends4)
+
+
+g_trends$FanDuel <- as.numeric(
+  ifelse(g_trends$FanDuel == "<1", 0, g_trends$FanDuel))
+g_trends2$Bovada <- as.numeric(
+  ifelse(g_trends2$Bovada == "<1", 0, g_trends2$Bovada))
+g_trends3$DraftKings <- as.numeric(
+  ifelse(g_trends3$DraftKings == "<1", 0, g_trends3$DraftKings))
+g_trends4$Betway <- as.numeric(
+  ifelse(g_trends4$Betway == "<1", 0, g_trends4$Betway))
+
+##Pretense for creating simple graphs  
+fit <- g_trends %>% model(NAIVE(FanDuel))
+fc <- fit %>% forecast(h = 12)
+
+fit2 <- g_trends %>% model(SNAIVE(FanDuel ~ lag("year")))
+fc2 <- fit2 %>% forecast(h = 12)
+
+fit3 <- g_trends %>% model(MEAN(FanDuel))
+fc3 <- fit3 %>% forecast(h = 12)
+
+fit4 <- g_trends %>% model(RW(FanDuel~drift()))
+fc4 <- fit4 %>% forecast(h = 12)
+
+fit5 <- g_trends %>% model(
+  AAN = ETS(FanDuel ~ error("A")+trend("A")+season("N")))
+fc5 <- fit5 %>% forecast(h = 12)
+
+fit6 <- g_trends %>% model(
+  ETS(FanDuel ~ error("A")+trend("A")+season("A"))
+)
+fc6 <- fit6 %>% forecast(h = 12)
+
+fit7 <- g_trends %>% model(
+  search = ARIMA(FanDuel, stepwise = FALSE)
+)
+fc7 <- fit7 %>% forecast(h = 12)
+
+fit8 <- g_trends %>% model(
+  arima012011 = ARIMA(FanDuel ~ pdq(0,1,2) + PDQ(0,1,1)),
+)
+fc8 <- fit8 %>% forecast(h = 12)
+
+sidebar <- dashboardSidebar(
+  sidebarMenu(
+    menuItem("Info Page", tabName = "infopage", icon = icon("comment")),
+    menuItem("Time Series", icon = icon("th"), tabName = "ts"),
+    menuItem("Decomposition", icon = icon("th"), tabName = "decomp"),
+    menuItem("Simple Modeling Options", icon = icon("th"), tabName = "sModel"),
+    menuItem("Exponential Smoothing Models", icon = icon("th"), tabName = "eModel"),
+    menuItem("ARIMA Modeling", icon = icon("th"), tabName = "aModel")
+    
+    
+    
+  )
+)
+
+body <- dashboardBody(
+  tabItems(
+    tabItem(tabName = "infopage",
+            p("Welcome to Will's time series app. This first page is just an intro to the app, but the next two pages will provide time series data for FanDuel, a daily fantasy sports and online gambling service available in the US. The second page shows the time series for Google Trends interest data in regards to FanDuel while the following page will break down the data graphed in the first time series. This app has now seen multiple new additions that provide more insight and information regarding the current data set. The first new tab will provide some simple forecasting options as well as provide the estimated value after 12 months based on each model. The second two provide and compare more complex variations of two different types of models and allow us to see how the different models interact with the data.")
+    ),
+    
+    tabItem(tabName = "ts",
+            fluidRow(box(
+              title = "Time Series Plot",
+              plotlyOutput("timeseries"),
+              p("Fanduel was initially created in 2009, but online gambling was not legalized in the US until 2011. This appears to be the firs time that FanDuel shows any google interest. The major spike coincides with a 2015 movement in which multiple states legalized gambling. After the data stablilizes, the trends appear to continually peak in September and then a smaller peak in February which coincides with the start of football season and the super bowl.")
+            ),
+            awesomeRadio("compfeature", label = h3("Select a Competitor"),
+                         choices = c("Bovada", "DraftKings", "Betway"),
+                         selected = "Bovada"),
+            box(
+              title = "Time Series of Competitors",
+              plotOutput("timeseries2"),
+            p("Compared next to it is the time series of multiple similar services. When looking at these time series, the seasonal impacts of football season are less prevalent in Betway as the site has a worldwide audience. It would be interesting and important to take a further look at these time series and the time series of other competitors to gain a better understanding of the market as a whole.")
+            ))
+                 
+    ),
+    
+    tabItem(tabName = "decomp",
+            fluidRow(
+              awesomeRadio("defeature", label = h3("Select a Feature"),
+                           choices = c("Seasonality", "Autocorrelation", "Decomposition"),
+                           selected = "Seasonality"),
+              hr(),
+              
+              box(
+                title = "Your Chosen Plot",
+                plotOutput("decompgraph")
+                
+              ),
+              h4("Seasonality"), br(), p("When just looking at the seasonality of the data, We see similar features as discussed earlier. If trend data correlates with site traffic, then FanDuel experiences a large increase in traffic during football season. There is then a significant decline in the spring and summer months which supports the data evidence for a seasonal impact based around american football."),
+              h4("ACF"), br(), p("This graph explores how correlated each data point is to prior points. Each lag is one month prior thus lag12 is one year prior. Since these ACF values are very significant we suggest that previous months are very well correlated to the current month. The ACF results further provide evidence that FanDuel's interest depends heavily on football season which is noticed by a lesser correlation at lag6 as this will show correlation between months with and without football season."),
+              h4("Decomposition"), br(), p("The Decomposition reinforces the information provided by the previous two plots. The main unique thing we see is that the peak in 2015 has a larger impact on the data than the seasonality does. We notice this because the seasonality portion of the decomposition is much smaller than the trend portion. It would be interesting to see this decomposition in 5 or 10 years will more consistent data that is less impacted by large spike in interest.")
+              )
+            
+    ),
+    tabItem(tabName = "sModel", 
+            fluidRow(
+              awesomeRadio("ChoosesModel", label = h3("Select a Simple Model"),
+                                  choices = c("Naive", "Seasonal Naive", "Mean", "Drift"),
+                                  selected = "Naive"),
+              box(
+                title = "Simple Forecast for 12 Months", 
+                plotOutput("simplegraph")
+              ),
+              box(title = "The Forecasted interest after 12 months will be",
+                  textOutput("fcmean")
+                
+              )
+            )
+            ),
+    tabItem(tabName = "eModel", 
+            fluidRow(
+            box(
+              title = "Forecast for the Holts Smoothing Model",
+              plotOutput("expgraphH")
+            ),
+            box(
+              title = "Forecast for the Holts/Winters Smoothing Model",
+              plotOutput("expgraphHW")
+            ),
+            box(
+              p("These two models are modeling methods with exponential smoothing. The first model, the Holts model, is designed for exponential smoothing with a trend. As you can probably guess from our data, this model will not be a very effective method to model our website's interest. The second option, the Holts/Winters method, adds a seasonality component and will be much more useful for our given data as we start to see some seasonailty within our data.")
+            )
+          )
+        ),
+    tabItem(tabName = "aModel",
+            fluidRow(
+              box(
+                title = "Forecast for the Auto ARIMA Model",
+                plotOutput("aARIMA")
+              ),
+              box(
+                title = "Forecast for the Manual ARIMA Model",
+                plotOutput("mARIMA")
+              ),
+              awesomeRadio("ChooseaModel", label = h3("Select an ARIMA Model"),
+                           choices = c("Auto", "Manual"),
+                           selected = "Auto"),
+              box(
+                title = "Analyze these residual plots to ensure the data set can be properly run with each forecast.",
+                plotOutput("arimares")
+              )
+            )
+          )
+  )
+)
+# Put them together into a dashboardPage
+ui <- dashboardPage(
+  dashboardHeader(title = "FanDuel Time Series"),
+  sidebar,
+  body
+)
+
+server <- function(input, output) {
+  output$timeseries <- renderPlotly({ggplotly(ggplot(g_trends, aes(Month, )) +
+                                                geom_line(aes(y = FanDuel, colour = "FanDuel")) +
+                                                labs(y = "Google Interest", x = "Month", title = "FanDuel Website Interest") +
+                                                easy_center_title())})
+  Reactive_Var2<- reactive({
+    if (input$compfeature == "Bovada") {
+      ggplot(g_trends2, aes(Month, )) +
+        geom_line(aes(y = Bovada, colour = "Bovada")) +
+        labs(y = "Google Interest", x = "Month", title = "Bovada Website Interest") +
+        easy_center_title()
+      
+    } else if (input$compfeature == "DraftKings") {
+      ggplot(g_trends3, aes(Month, )) +
+        geom_line(aes(y = DraftKings, colour = "DraftKings")) +
+        labs(y = "Google Interest", x = "Month", title = "DraftKings Website Interest") +
+        easy_center_title()
+    } else if (input$compfeature == "Betway") {
+      ggplot(g_trends4, aes(Month, )) +
+        geom_line(aes(y = Betway, colour = "Betway")) +
+        labs(y = "Google Interest", x = "Month", title = "Betway Website Interest") +
+        easy_center_title()
+    }
+  })
+  
+
+  output$timeseries2 <- renderPlot({Reactive_Var2()})
+  
+  
+ 
+  
+  Reactive_Var<- reactive({
+    if (input$defeature == "Seasonality") {
+      g_trends %>% gg_season(labels = "both") +
+        labs(y = "Google Interest", title = "Seasonal Plot: FanDuel Site Interest") +
+        easy_center_title()
+      
+    } else if (input$defeature == "Autocorrelation") {
+      g_trends %>% ACF(FanDuel, lag_max = 12) %>% autoplot()
+    } else if (input$defeature == "Decomposition") {
+      g_trends %>%
+        model(
+          classical_decomposition(FanDuel, type = "multiplicative")
+        ) %>%
+        components() %>%
+        autoplot() +
+        labs(title = "Classical multiplicative decomposition of FanDuel Google Interest") +
+        easy_center_title()
+    }
+    
+    
+  })
+
+ ##Reactive variable to decide and show simple models
+  Reactive_Var3<- reactive({
+    if (input$ChoosesModel == "Naive") {
+      fc %>% autoplot(g_trends, level = NULL) + 
+        labs(title = "FanDuel Interest Forecast with Naive Model") +
+        easy_center_title()
+    } else if (input$ChoosesModel == "Seasonal Naive") {
+      fc2 %>% autoplot(g_trends, level = NULL) + 
+        labs(title = "FanDuel Interest Forecast with Seasonal Naive Model") +
+        easy_center_title()
+    } else if (input$ChoosesModel == "Mean") {
+      fc3 %>% autoplot(g_trends, level = NULL) + 
+        labs(title = "FanDuel Interest Forecast with Mean Model") +
+        easy_center_title()
+    } else if (input$ChoosesModel == "Drift" ) {
+      fc4 %>% autoplot(g_trends, level = NULL) + 
+        labs(title = "FanDuel Interest Forecast with Drift Model") +
+        easy_center_title()
+    }
+    
+    
+  })
+  
+  Reactive_Var4<- reactive({
+    if (input$ChoosesModel == "Naive") {
+    fc$.mean[12]
+    } else if (input$ChoosesModel == "Seasonal Naive") {
+    fc2$.mean[12]
+    } else if (input$ChoosesModel == "Mean") {
+    fc3$.mean[12]
+    } else if (input$ChoosesModel == "Drift" ) {
+    fc4$.mean[12]
+    }
+    
+    
+  })
+  
+  output$simplegraph <- renderPlot({Reactive_Var3()})
+  
+  
+
+  output$expgraphH <- renderPlot({fc5 %>% autoplot(g_trends, level = NULL) + 
+      labs(title = "FanDuel Interest Forecast with Holts Model") +
+      easy_center_title()})
+  
+
+  output$expgraphHW <- renderPlot({fc6 %>% autoplot(g_trends, level = NULL) + 
+    labs(title = "FanDuel Interest Forecast with Holts/Winters Model") +
+    easy_center_title()})
+  
+
+  output$aARIMA <- renderPlot({
+    fc7 %>% autoplot(g_trends, level = NULL) + 
+      labs(title = "FanDuel Interest Forecast with Auto ARIMA Model") +
+      easy_center_title() 
+  })
+  
+
+  output$mARIMA <- renderPlot({
+    fc8 %>% autoplot(g_trends, level = NULL) + 
+      labs(title = "FanDuel Interest Forecast with ARIMA Selected Model") +
+      easy_center_title() 
+  })
+  
+  Reactive_Var5<- reactive({
+    if (input$ChooseaModel == "Auto") {
+      gg_tsresiduals(fit7)
+    } else if (input$ChooseaModel == "Manual") {
+      gg_tsresiduals(fit8)
+    } 
+    
+    
+  })
+  
+  output$decompgraph <- renderPlot({Reactive_Var()})
+  output$decompchoice <-  renderPrint({input$radio})
+  output$fcmean <- renderPrint({Reactive_Var4()})
+  output$arimares <- renderPlot({Reactive_Var5()})
+  }
+
+shinyApp(ui, server)
+
+
+```
+
